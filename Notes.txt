@@ -1,0 +1,162 @@
+
+
+#### 🔹 1. Installation Steps
+
+1. Update system and install Apache, PHP, and MariaDB
+
+   ```bash
+   sudo apt update
+   sudo apt install apache2 mariadb-server php php-mysqli php-gd -y
+   ```
+2. Move DVWA to web root
+
+   ```bash
+   sudo cp -r DVWA-master /var/www/html/dvwa
+   ```
+3. Configure database
+
+   ```bash
+   sudo mysql -e "CREATE DATABASE dvwa;"
+   sudo mysql -e "CREATE USER 'dvwauser'@'localhost' IDENTIFIED BY 'dvwapass';"
+   sudo mysql -e "GRANT ALL PRIVILEGES ON dvwa.* TO 'dvwauser'@'localhost';"
+   sudo mysql -e "FLUSH PRIVILEGES;"
+   ```
+4. Edit config file
+
+   ```php
+   $_DVWA['db_server']   = '127.0.0.1';
+   $_DVWA['db_database'] = 'dvwa';
+   $_DVWA['db_user']     = 'dvwauser';
+   $_DVWA['db_password'] = 'dvwapass';
+   ```
+5. Permissions
+
+   ```bash
+   sudo chown -R www-data:www-data /var/www/html/dvwa
+   sudo chmod -R 755 /var/www/html/dvwa
+   ```
+6. Start services
+
+   ```bash
+   sudo systemctl restart apache2
+   sudo systemctl restart mariadb
+   ```
+7. Open in browser
+
+   ```
+   http://localhost/dvwa/setup.php
+   ```
+
+   → click **Create/Reset Database**
+   → Login: `admin` / `password`
+
+---
+
+#### 🔹 2. SQL Injection (Low Level)
+
+**Goal:** Extract users table by injecting SQL queries.
+
+**Steps:**
+
+* Navigate to **Vulnerabilities → SQL Injection**
+* Input:
+
+  ```
+  1' OR '1'='1' --
+  ```
+* Observe: all users displayed.
+* Dump credentials:
+
+  ```
+  1' UNION SELECT user, password FROM users --
+  ```
+
+**Fix:**
+Use parameterized queries:
+
+```php
+$stmt = $dbh->prepare('SELECT * FROM users WHERE user_id = :id');
+$stmt->execute([':id' => $input]);
+```
+
+---
+
+#### 🔹 3. Cross-Site Scripting (XSS)
+
+**Stored XSS**
+
+* Input field →
+
+  ```html
+  <script>alert('XSS')</script>
+  ```
+* Popup confirms vulnerability.
+
+**Reflected XSS**
+
+* URL parameter →
+
+  ```html
+  <script>alert(document.domain)</script>
+  ```
+
+**Fix:**
+
+```php
+echo htmlspecialchars($user_input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+```
+
+Add HTTP header:
+
+```
+Content-Security-Policy: default-src 'self';
+```
+
+---
+
+#### 🔹 4. CSRF (Cross-Site Request Forgery)
+
+**Goal:** Change password without user consent.
+**Steps:**
+
+* Open **CSRF** module.
+* Capture password change request.
+* Create malicious HTML form to auto-submit same request.
+
+**Fix:** Use CSRF tokens in form.
+
+```php
+<input type="hidden" name="token" value="<?php echo $_SESSION['token']; ?>">
+```
+
+---
+
+#### 🔹 5. File Inclusion
+
+**Payload:**
+
+```
+?page=../../../../etc/passwd
+```
+
+**Fix:** Allow only whitelisted files.
+
+```php
+$whitelist = ['home.php', 'about.php'];
+if (in_array($page, $whitelist)) {
+  include $page;
+}
+```
+
+---
+
+#### 🔹 6. Best Practices
+
+* Sanitize & validate inputs
+* Use least-privilege DB users
+* Implement CSP and secure headers
+* Keep software updated
+* Disable verbose error messages
+
+---
+
